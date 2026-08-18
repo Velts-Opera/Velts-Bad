@@ -338,6 +338,7 @@ async def velts_bad(ctx: JobContext) -> None:
             close_on_disconnect=True,
             delete_room_on_close=True,
         ),
+        record=False,
     )
 
     await session.generate_reply(
