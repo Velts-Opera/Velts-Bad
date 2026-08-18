@@ -55,11 +55,30 @@ def test_private_session_recovers_legacy_concatenated_allowlist():
     assert "$allowedRaw = Get-AllowedIdentitiesRaw $envValues" in text
 
 
-def test_private_session_does_not_request_token_output_mode():
+def test_private_session_uses_agents_playground_instead_of_meet():
     text = script_text()
 
-    # The CLI may produce the generated token on stdout while opening Meet. The
-    # helper pipes stdout to Out-Null and never requests token-only/json output.
-    assert "| Out-Null" in text
-    assert "--token-only" not in text
-    assert "--json" not in text
+    assert "$playgroundUrl = 'https://agents-playground.livekit.io/'" in text
+    assert "--token-only" in text
+    assert "Set-Clipboard -Value $token" in text
+    assert "Start-Process $playgroundUrl" in text
+    assert "--open meet" not in text
+    assert "meet.livekit.io" not in text
+
+
+def test_private_session_never_prints_jwt():
+    text = script_text()
+
+    assert "Token: copiado para a área de transferência" in text
+    assert "Write-Host $token" not in text
+    assert "Write-Output $token" not in text
+    assert "Write-Host $tokenOutput" not in text
+    assert "Write-Output $tokenOutput" not in text
+
+
+def test_private_session_validates_token_shape_before_clipboard():
+    text = script_text()
+
+    assert "^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$" in text
+    assert "$tokenCandidates.Count -ne 1" in text
+    assert "Set-Clipboard -Value $token" in text
