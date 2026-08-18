@@ -2,6 +2,7 @@ from pathlib import Path
 
 SCRIPT_PATH = Path("scripts/open-private-session.ps1")
 CLIENT_PATH = Path("scripts/private-session-client.html")
+CLIENT_JS_PATH = Path("scripts/private-session-client.js")
 
 
 def script_text() -> str:
@@ -10,6 +11,10 @@ def script_text() -> str:
 
 def client_text() -> str:
     return CLIENT_PATH.read_text(encoding="utf-8")
+
+
+def client_js_text() -> str:
+    return CLIENT_JS_PATH.read_text(encoding="utf-8")
 
 
 def test_private_session_script_is_ascii_safe_for_windows_powershell_5():
@@ -112,23 +117,49 @@ def test_private_session_validates_token_shape_before_clipboard():
     assert "Set-Clipboard -Value $token" in text
 
 
-def test_local_client_is_microphone_only_and_subscribes_audio():
-    text = client_text()
+def test_local_client_csp_allows_local_external_script_but_not_inline_script():
+    html = client_text()
 
-    assert "livekit-client@2.21.0" in text
-    assert "room.localParticipant.setMicrophoneEnabled(true)" in text
-    assert "setCameraEnabled" not in text
-    assert "enableCameraAndMicrophone" not in text
-    assert "RoomEvent.TrackSubscribed" in text
-    assert "track.kind !== Track.Kind.Audio" in text
-    assert "track.attach()" in text
+    assert "script-src 'self' https://cdn.jsdelivr.net" in html
+    assert '<script src="/private-session-client.js"></script>' in html
+    assert "<script>" not in html
+
+
+def test_local_client_populates_server_and_room_from_query_params():
+    js = client_js_text()
+
+    assert "new URLSearchParams(window.location.search)" in js
+    assert "serverInput.value = params.get('server') || ''" in js
+    assert "roomInput.value = params.get('room') || ''" in js
+
+
+def test_local_client_reads_token_from_clipboard_on_connect_with_manual_fallback():
+    html = client_text()
+    js = client_js_text()
+
+    assert "navigator.clipboard.readText()" in js
+    assert "tokenFallback.hidden = false" in js
+    assert 'id="tokenFallback" hidden' in html
+    assert "navigator.clipboard.writeText('[cleared]')" in js
+
+
+def test_local_client_is_microphone_only_and_subscribes_audio():
+    html = client_text()
+    js = client_js_text()
+
+    assert "livekit-client@2.21.0" in html
+    assert "room.localParticipant.setMicrophoneEnabled(true)" in js
+    assert "setCameraEnabled" not in js
+    assert "enableCameraAndMicrophone" not in js
+    assert "RoomEvent.TrackSubscribed" in js
+    assert "track.kind !== Track.Kind.Audio" in js
+    assert "track.attach()" in js
 
 
 def test_local_client_does_not_persist_token_in_url_or_storage():
-    text = client_text()
+    js = client_js_text()
 
-    assert "params.get('token')" not in text
-    assert "localStorage" not in text
-    assert "sessionStorage" not in text
-    assert "tokenInput.value = ''" in text
-    assert "navigator.clipboard.writeText('[cleared]')" in text
+    assert "params.get('token')" not in js
+    assert "localStorage" not in js
+    assert "sessionStorage" not in js
+    assert "tokenInput.value = ''" in js
