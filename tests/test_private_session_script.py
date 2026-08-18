@@ -76,6 +76,14 @@ def test_private_session_uses_local_client_not_removed_hosted_playground_or_meet
     assert "--open meet" not in text
 
 
+def test_local_server_uses_working_directory_instead_of_unquoted_directory_argument():
+    text = script_text()
+
+    assert "-WorkingDirectory $clientDir" in text
+    assert "'--directory'" not in text
+    assert "$serverArgs = @('-m', 'http.server', [string]$port, '--bind', '127.0.0.1')" in text
+
+
 def test_private_session_never_prints_jwt_or_puts_it_in_url():
     text = script_text()
 
