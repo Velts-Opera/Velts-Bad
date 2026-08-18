@@ -158,4 +158,4 @@ Write-Host "LiveKit URL: $liveKitUrl"
 Write-Host "Room: $room"
 Write-Host 'Token: copied to clipboard. Paste it into the Playground token field.'
 Write-Host 'Keep CAMERA OFF and enable MICROPHONE only.'
-Write-Host "After connecting, clear the clipboard with: Set-Clipboard -Value ''"
+Write-Host "After pasting the token, overwrite the clipboard with: Set-Clipboard -Value '[cleared]'"
