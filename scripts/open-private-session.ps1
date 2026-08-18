@@ -26,6 +26,26 @@ function Read-DotEnv([string]$Path) {
     return $values
 }
 
+function Get-AllowedIdentitiesRaw([hashtable]$Values) {
+    $raw = [string]$Values['VELTS_BAD_ALLOWED_IDENTITIES']
+    if (-not $raw) {
+        return ''
+    }
+
+    # Recover from an old PowerShell Add-Content edge case where the next env
+    # assignment was appended to the allowlist because the file lacked a final
+    # newline, e.g. "veltsVELTS_BAD_LLM_MODEL=...". The deployment helper has
+    # historically handled this exact malformed local file, so the session
+    # helper must interpret it consistently rather than denying a valid user.
+    $joinedMarker = 'VELTS_BAD_LLM_MODEL='
+    $joinedIndex = $raw.IndexOf($joinedMarker, [System.StringComparison]::Ordinal)
+    if ($joinedIndex -ge 0) {
+        $raw = $raw.Substring(0, $joinedIndex).Trim()
+    }
+
+    return $raw
+}
+
 if (-not (Get-Command lk -ErrorAction SilentlyContinue)) {
     throw 'LiveKit CLI (lk) não encontrado.'
 }
@@ -41,8 +61,13 @@ if (-not $repoRoot) {
 Set-Location $repoRoot
 
 $envValues = Read-DotEnv '.env.local'
+$allowedRaw = Get-AllowedIdentitiesRaw $envValues
+if (-not $allowedRaw) {
+    throw 'VELTS_BAD_ALLOWED_IDENTITIES ausente ou vazio em .env.local.'
+}
+
 $allowed = @(
-    ([string]$envValues['VELTS_BAD_ALLOWED_IDENTITIES']).Split(',') |
+    $allowedRaw.Split(',') |
         ForEach-Object { $_.Trim().ToLowerInvariant() } |
         Where-Object { $_ }
 )
