@@ -1,10 +1,14 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "velts-bad"
 version = "0.1.0"
 description = "Private LiveKit voice agent powered by Groq"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.15"
 dependencies = [
-  "livekit-agents[groq]~=1.5",
+  "livekit-agents[groq]>=1.6.9,<2",
   "python-dotenv>=1.0,<2",
 ]
 
@@ -14,6 +18,16 @@ dev = [
   "pytest-asyncio>=0.25,<1",
 ]
 
+[tool.uv]
+constraint-dependencies = ["yarl<1.24"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-dir]
+"" = "src"
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-pythonpath = ["."]
+asyncio_default_fixture_loop_scope = "function"
+pythonpath = ["src"]
