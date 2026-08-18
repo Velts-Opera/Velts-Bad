@@ -37,6 +37,16 @@ def test_private_session_rejects_ambiguous_identity_syntax():
     assert "$allowed -notcontains $normalizedIdentity" in text
 
 
+def test_private_session_recovers_legacy_concatenated_allowlist():
+    text = script_text()
+
+    assert "function Get-AllowedIdentitiesRaw" in text
+    assert "$joinedMarker = 'VELTS_BAD_LLM_MODEL='" in text
+    assert "$raw.IndexOf($joinedMarker" in text
+    assert "$raw.Substring(0, $joinedIndex).Trim()" in text
+    assert "$allowedRaw = Get-AllowedIdentitiesRaw $envValues" in text
+
+
 def test_private_session_does_not_request_token_output_mode():
     text = script_text()
 
