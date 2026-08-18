@@ -12,11 +12,12 @@ def test_placeholder_secret_values_are_ignored():
 
 
 def test_non_placeholder_assignment_is_detected_without_echoing_value():
-    text = "GROQ_API_KEY=not-a-real-key-but-non-placeholder\n"
+    value = "opaque-value-123456789"
+    text = f"GROQ_API_KEY={value}\n"
     findings = scan_text(text, location="example")
 
     assert findings == ["example: non-placeholder value assigned to GROQ_API_KEY"]
-    assert "not-a-real-key-but-non-placeholder" not in findings[0]
+    assert value not in findings[0]
 
 
 def test_credential_shaped_groq_material_is_detected_without_echoing_value():
