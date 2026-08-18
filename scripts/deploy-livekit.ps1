@@ -34,6 +34,45 @@ function Add-OptionalSecret(
     }
 }
 
+function Assert-GitHubCiGreen([string]$HeadSha) {
+    $repo = 'Velts-Opera/Velts-Bad'
+    $endpoint = "https://api.github.com/repos/$repo/actions/runs?branch=main&event=push&per_page=20"
+    $headers = @{
+        'Accept' = 'application/vnd.github+json'
+        'User-Agent' = 'Velts-Bad-Deploy'
+        'X-GitHub-Api-Version' = '2022-11-28'
+    }
+
+    # Public repositories can be queried without authentication. If the repo is
+    # made private later, an optional read-only GITHUB_TOKEN can be supplied.
+    if ($env:GITHUB_TOKEN) {
+        $headers['Authorization'] = "Bearer $($env:GITHUB_TOKEN)"
+    }
+
+    try {
+        $response = Invoke-RestMethod -Method Get -Uri $endpoint -Headers $headers
+    }
+    catch {
+        throw "Deploy bloqueado: não foi possível verificar o CI do commit [$HeadSha] no GitHub."
+    }
+
+    $successfulRun = $response.workflow_runs |
+        Where-Object {
+            $_.head_sha -eq $HeadSha -and
+            $_.name -eq 'CI' -and
+            $_.event -eq 'push' -and
+            $_.status -eq 'completed' -and
+            $_.conclusion -eq 'success'
+        } |
+        Select-Object -First 1
+
+    if (-not $successfulRun) {
+        throw "Deploy bloqueado: o commit [$HeadSha] da main não possui um run CI de push concluído com sucesso."
+    }
+
+    Write-Host "CI gate verificado: run [$($successfulRun.id)] aprovado para [$HeadSha]."
+}
+
 if (-not (Get-Command lk -ErrorAction SilentlyContinue)) {
     throw 'LiveKit CLI (lk) não encontrado.'
 }
@@ -69,6 +108,8 @@ if (-not $AllowNonMain) {
     if ($headSha -ne $originMainSha) {
         throw 'Deploy bloqueado: a main local não corresponde a origin/main. Execute git pull --ff-only.'
     }
+
+    Assert-GitHubCiGreen $headSha
 }
 
 $envValues = Read-DotEnv '.env.local'
