@@ -52,6 +52,13 @@ if (-not $normalizedIdentity) {
     throw 'Identity vazia não é permitida.'
 }
 
+# Keep CLI values unambiguous and predictable. In particular, identities may
+# never start with "-", contain whitespace, quotes, shell metacharacters, or
+# exceed the small application-level identifier budget.
+if ($normalizedIdentity -notmatch '^[a-z0-9][a-z0-9._@-]{0,63}$') {
+    throw 'Identity inválida. Use 1-64 caracteres: a-z, 0-9, ponto, sublinhado, @ ou hífen; o primeiro caractere deve ser alfanumérico.'
+}
+
 if ($allowed -notcontains $normalizedIdentity) {
     throw "Identity '$Identity' não está na allowlist local do Velts-Bad."
 }
