@@ -84,6 +84,15 @@ def test_local_server_uses_working_directory_instead_of_unquoted_directory_argum
     assert "$serverArgs = @('-m', 'http.server', [string]$port, '--bind', '127.0.0.1')" in text
 
 
+def test_local_server_verifies_python_launcher_is_functional():
+    text = script_text()
+
+    assert "function Test-PythonCommand" in text
+    assert "& $CommandPath --version" in text
+    assert "Test-PythonCommand $command.Source" in text
+    assert "No functional Python launcher found" in text
+
+
 def test_private_session_never_prints_jwt_or_puts_it_in_url():
     text = script_text()
 
