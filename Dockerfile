@@ -4,6 +4,8 @@ FROM ghcr.io/astral-sh/uv:python${PYTHON_VERSION}-bookworm-slim AS base
 
 ENV PYTHONUNBUFFERED=1
 ENV UV_COMPILE_BYTECODE=1
+ENV HF_HOME=/app/.cache/huggingface
+ENV TORCH_HOME=/app/.cache/torch
 WORKDIR /app
 
 FROM base AS build
@@ -18,5 +20,7 @@ FROM base AS runtime
 ARG UID=10001
 RUN adduser --disabled-password --gecos "" --home /app --shell /sbin/nologin --uid ${UID} appuser
 COPY --from=build --chown=appuser:appuser /app /app
+RUN chown appuser:appuser /app
+ENV HOME=/app
 USER appuser
-CMD ["uv", "run", "src/agent.py", "start"]
+CMD ["/app/.venv/bin/python", "src/agent.py", "start"]
