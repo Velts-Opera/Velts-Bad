@@ -28,8 +28,27 @@ if (-not $envValues['GROQ_API_KEY']) {
     throw 'GROQ_API_KEY ausente em .env.local.'
 }
 
-if (-not $envValues['VELTS_BAD_ALLOWED_IDENTITIES']) {
+$allowedIdentities = [string]$envValues['VELTS_BAD_ALLOWED_IDENTITIES']
+$llmModel = [string]$envValues['VELTS_BAD_LLM_MODEL']
+
+# Recover safely from a common PowerShell Add-Content edge case where a file
+# without a trailing newline causes the next variable to be glued to the
+# previous value.
+$joinedMarker = 'VELTS_BAD_LLM_MODEL='
+$joinedIndex = $allowedIdentities.IndexOf($joinedMarker, [System.StringComparison]::Ordinal)
+if ($joinedIndex -ge 0) {
+    if (-not $llmModel) {
+        $llmModel = $allowedIdentities.Substring($joinedIndex + $joinedMarker.Length).Trim()
+    }
+    $allowedIdentities = $allowedIdentities.Substring(0, $joinedIndex).Trim()
+}
+
+if (-not $allowedIdentities) {
     throw 'VELTS_BAD_ALLOWED_IDENTITIES ausente ou vazio. O Velts-Bad é deny-by-default.'
+}
+
+if (-not $llmModel -or $llmModel -eq 'llama-3.3-70b-versatile') {
+    $llmModel = 'openai/gpt-oss-20b'
 }
 
 $tempSecrets = Join-Path ([System.IO.Path]::GetTempPath()) ("velts-bad-secrets-" + [guid]::NewGuid().ToString('N') + '.env')
@@ -37,18 +56,17 @@ $tempSecrets = Join-Path ([System.IO.Path]::GetTempPath()) ("velts-bad-secrets-"
 try {
     $secretLines = @(
         "GROQ_API_KEY=$($envValues['GROQ_API_KEY'])",
-        "VELTS_BAD_ALLOWED_IDENTITIES=$($envValues['VELTS_BAD_ALLOWED_IDENTITIES'])"
+        "VELTS_BAD_ALLOWED_IDENTITIES=$allowedIdentities",
+        "VELTS_BAD_LLM_MODEL=$llmModel"
     )
 
-    if ($envValues['GROQ_MODEL']) {
-        $secretLines += "GROQ_MODEL=$($envValues['GROQ_MODEL'])"
-    }
+    # Windows PowerShell 5.1 writes a UTF-8 BOM with Set-Content -Encoding utf8.
+    # LiveKit's dotenv parser rejects that BOM as part of the first variable name,
+    # so write explicit UTF-8 without BOM.
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllLines($tempSecrets, $secretLines, $utf8NoBom)
 
-    if ($envValues['VELTS_BAD_LLM_MODEL']) {
-        $secretLines += "VELTS_BAD_LLM_MODEL=$($envValues['VELTS_BAD_LLM_MODEL'])"
-    }
-
-    Set-Content -Path $tempSecrets -Value $secretLines -Encoding utf8
+    Write-Host 'Prepared LiveKit secrets: GROQ_API_KEY, VELTS_BAD_ALLOWED_IDENTITIES, VELTS_BAD_LLM_MODEL'
 
     if (Test-Path 'livekit.toml') {
         Write-Host 'Deploying new Velts-Bad version to LiveKit Cloud...'
