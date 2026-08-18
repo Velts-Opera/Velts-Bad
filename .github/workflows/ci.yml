@@ -48,6 +48,31 @@ jobs:
       - name: Test
         run: uv run --locked pytest -q
 
+      - name: Validate PowerShell syntax
+        shell: pwsh
+        run: |
+          $failed = $false
+          Get-ChildItem -Path scripts -Filter '*.ps1' | ForEach-Object {
+            $tokens = $null
+            $parseErrors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              $_.FullName,
+              [ref]$tokens,
+              [ref]$parseErrors
+            ) | Out-Null
+
+            if ($parseErrors.Count -gt 0) {
+              $failed = $true
+              $parseErrors | ForEach-Object {
+                Write-Error ("{0}: {1}" -f $_.Extent.File, $_.Message)
+              }
+            }
+          }
+
+          if ($failed) {
+            exit 1
+          }
+
       - name: LiveKit import smoke test
         run: >-
           uv run --locked python -c "import agent; print('livekit-agent-import: OK')"
