@@ -55,6 +55,17 @@ def test_private_session_recovers_legacy_concatenated_allowlist():
     assert "$allowedRaw = Get-AllowedIdentitiesRaw $envValues" in text
 
 
+def test_private_session_resolves_livekit_url_without_exposing_secret():
+    text = script_text()
+
+    assert "function Get-LiveKitUrl" in text
+    assert "& lk project list" in text
+    assert "lk project list --json" not in text
+    assert "wss://" in text
+    assert "$liveKitUrl = Get-LiveKitUrl $envValues" in text
+    assert "LIVEKIT_API_SECRET" not in text
+
+
 def test_private_session_uses_agents_playground_instead_of_meet():
     text = script_text()
 
