@@ -58,6 +58,34 @@ function ConvertTo-NativeJsonArgument([string]$Json) {
     return $Json
 }
 
+function Get-LiveKitUrl([hashtable]$Values) {
+    $fromEnv = ([string]$Values['LIVEKIT_URL']).Trim()
+    if ($fromEnv -match '^wss://[^\s]+$') {
+        return $fromEnv
+    }
+
+    # The authenticated LiveKit CLI already knows the selected project URL.
+    # Use the human-readable project list because it does not expose API secret;
+    # extract only the URL from the row marked as the default project (*).
+    $projectLines = @(& lk project list 2>$null)
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Não foi possível consultar os projetos autenticados no LiveKit CLI.'
+    }
+
+    $defaultLine = $projectLines |
+        Where-Object { $_ -match '\*' -and $_ -match 'wss://' } |
+        Select-Object -First 1
+
+    if ($defaultLine) {
+        $match = [regex]::Match([string]$defaultLine, 'wss://[^\s│]+' )
+        if ($match.Success) {
+            return $match.Value
+        }
+    }
+
+    throw 'LIVEKIT_URL ausente em .env.local e não foi possível obter a URL do projeto padrão via lk project list.'
+}
+
 if (-not (Get-Command lk -ErrorAction SilentlyContinue)) {
     throw 'LiveKit CLI (lk) não encontrado.'
 }
@@ -77,10 +105,7 @@ if (-not $repoRoot) {
 Set-Location $repoRoot
 
 $envValues = Read-DotEnv '.env.local'
-$liveKitUrl = ([string]$envValues['LIVEKIT_URL']).Trim()
-if (-not $liveKitUrl -or $liveKitUrl -notmatch '^wss://') {
-    throw 'LIVEKIT_URL ausente ou inválida em .env.local. Esperado wss://...'
-}
+$liveKitUrl = Get-LiveKitUrl $envValues
 
 $allowedRaw = Get-AllowedIdentitiesRaw $envValues
 if (-not $allowedRaw) {
