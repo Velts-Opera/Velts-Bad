@@ -66,6 +66,10 @@ if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
     throw 'Git não encontrado.'
 }
 
+if (-not (Get-Command Set-Clipboard -ErrorAction SilentlyContinue)) {
+    throw 'Set-Clipboard não está disponível neste PowerShell.'
+}
+
 $repoRoot = (& git rev-parse --show-toplevel 2>$null).Trim()
 if (-not $repoRoot) {
     throw 'Execute este script dentro do repositório Git do Velts-Bad.'
@@ -73,6 +77,11 @@ if (-not $repoRoot) {
 Set-Location $repoRoot
 
 $envValues = Read-DotEnv '.env.local'
+$liveKitUrl = ([string]$envValues['LIVEKIT_URL']).Trim()
+if (-not $liveKitUrl -or $liveKitUrl -notmatch '^wss://') {
+    throw 'LIVEKIT_URL ausente ou inválida em .env.local. Esperado wss://...'
+}
+
 $allowedRaw = Get-AllowedIdentitiesRaw $envValues
 if (-not $allowedRaw) {
     throw 'VELTS_BAD_ALLOWED_IDENTITIES ausente ou vazio em .env.local.'
@@ -103,18 +112,19 @@ if ($allowed -notcontains $normalizedIdentity) {
 $room = "velts-bad-$([guid]::NewGuid().ToString('N').Substring(0, 16))"
 $ttl = "${ValidForMinutes}m"
 $agentName = 'velts-bad'
+$playgroundUrl = 'https://agents-playground.livekit.io/'
 
-# --allow-source microphone already restricts publish tracks to the microphone.
+# --allow-source microphone restricts publish tracks to the microphone.
 # LiveKit defaults canSubscribe=true and canUpdateOwnMetadata=false. The one
 # additional permission that must be overridden is canPublishData, whose
 # default follows canPublish and would otherwise be true.
 $grantJson = '{"canPublishData":false}'
 $grant = ConvertTo-NativeJsonArgument $grantJson
 
-Write-Host "Abrindo sessão privada em sala única [$room] para identity [$normalizedIdentity]..."
-Write-Host "Token temporário: $ttl. O valor do token não será exibido."
+Write-Host "Preparando sessão privada [$room] para identity [$normalizedIdentity]..."
+Write-Host "Token temporário: $ttl. O valor não será impresso."
 
-& lk token create `
+$tokenOutput = & lk token create `
     --identity $normalizedIdentity `
     --room $room `
     --agent $agentName `
@@ -122,10 +132,29 @@ Write-Host "Token temporário: $ttl. O valor do token não será exibido."
     --allow-source microphone `
     --grant $grant `
     --valid-for $ttl `
-    --open meet | Out-Null
+    --token-only
 
 if ($LASTEXITCODE -ne 0) {
-    throw "LiveKit CLI encerrou com código $LASTEXITCODE ao criar a sessão privada."
+    throw "LiveKit CLI encerrou com código $LASTEXITCODE ao criar o token privado."
 }
 
-Write-Host "Sessão privada aberta. Sala: $room"
+$tokenCandidates = @(
+    $tokenOutput |
+        ForEach-Object { ([string]$_).Trim() } |
+        Where-Object { $_ -match '^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$' }
+)
+
+if ($tokenCandidates.Count -ne 1) {
+    throw 'O LiveKit CLI não retornou exatamente um JWT válido. Token não copiado.'
+}
+
+$token = $tokenCandidates[0]
+Set-Clipboard -Value $token
+Start-Process $playgroundUrl
+
+Write-Host "Agents Playground aberto."
+Write-Host "LiveKit URL: $liveKitUrl"
+Write-Host "Sala: $room"
+Write-Host "Token: copiado para a área de transferência; cole no campo de token do Playground."
+Write-Host "Mantenha a câmera DESATIVADA e habilite somente o microfone."
+Write-Host "Depois de conectar, limpe a área de transferência com: Set-Clipboard -Value ''"
