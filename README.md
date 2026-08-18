@@ -61,7 +61,7 @@ uv run --locked pytest -q
 uv run --locked python scripts/check_secrets.py
 ```
 
-O GitHub Actions também executa esses gates, build da imagem Docker e smoke test dentro da imagem.
+O GitHub Actions também executa esses gates, valida a sintaxe dos scripts PowerShell, constrói a imagem Docker e executa smoke test dentro da imagem.
 
 ## Abrir uma sessão privada
 
@@ -74,13 +74,14 @@ Use uma sala nova para cada conversa:
 O helper:
 
 1. exige que a identity esteja em `VELTS_BAD_ALLOWED_IDENTITIES`;
-2. gera uma sala aleatória por sessão;
-3. fixa o dispatch no agente `velts-bad`;
-4. cria token curto, 15 minutos por padrão;
-5. permite publicar somente `microphone`;
-6. permite assinar a voz do agente;
-7. proíbe publicação de data e alteração de metadata;
-8. abre o LiveKit Meet sem imprimir o token no terminal.
+2. aceita somente identities em formato seguro de 1–64 caracteres;
+3. gera uma sala aleatória por sessão;
+4. fixa o dispatch no agente `velts-bad`;
+5. cria token curto, 15 minutos por padrão;
+6. permite publicar somente `microphone`;
+7. permite assinar a voz do agente;
+8. proíbe publicação de data e alteração de metadata;
+9. abre o LiveKit Meet sem imprimir o token no terminal.
 
 A validade do token limita a entrada inicial; a duração da conversa é controlada separadamente pelo agente. Não reutilize a mesma sala entre contatos.
 
@@ -97,12 +98,18 @@ git pull --ff-only
 O helper de deploy:
 
 1. bloqueia branch errada, árvore suja ou `main` desatualizada;
-2. exige o agent ID de produção conhecido `CA_GTdmGaEPnJy3`;
-3. regenera `livekit.toml` para esse agente se o arquivo local não existir;
-4. prepara os secrets necessários sem apagar os usados pelo runtime atual;
-5. faz rolling deploy do agente existente;
-6. somente após deploy bem-sucedido remove secrets obsoletos por overwrite;
-7. consulta o status final do agente.
+2. exige que o SHA exato da `main` possua um run GitHub Actions chamado `CI`, disparado por `push`, concluído com `success`;
+3. falha fechado se não conseguir consultar o GitHub ou se o CI estiver ausente, pendente ou falho;
+4. exige o agent ID de produção conhecido `CA_GTdmGaEPnJy3`;
+5. regenera `livekit.toml` para esse agente se o arquivo local não existir;
+6. prepara os secrets necessários sem apagar os usados pelo runtime atual;
+7. faz rolling deploy do agente existente;
+8. somente após deploy bem-sucedido remove secrets obsoletos por overwrite;
+9. consulta o status final do agente.
+
+O repositório é público e o gate de CI pode consultar a API do GitHub sem autenticação. Se o repositório se tornar privado, forneça um `GITHUB_TOKEN` somente-leitura no ambiente local. O script nunca imprime esse token.
+
+Esse gate de deploy reduz o risco de um push direto na `main`, mas não substitui proteção de branch no GitHub. A `main` deve continuar sendo protegida por ruleset/branch protection com PR e `CI` obrigatórios.
 
 ## Validação pós-deploy
 
