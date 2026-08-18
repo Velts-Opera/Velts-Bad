@@ -10,7 +10,7 @@ $ErrorActionPreference = 'Stop'
 
 function Read-DotEnv([string]$Path) {
     if (-not (Test-Path $Path)) {
-        throw "Arquivo $Path não encontrado."
+        throw "File $Path not found."
     }
 
     $values = @{}
@@ -32,11 +32,6 @@ function Get-AllowedIdentitiesRaw([hashtable]$Values) {
         return ''
     }
 
-    # Recover from an old PowerShell Add-Content edge case where the next env
-    # assignment was appended to the allowlist because the file lacked a final
-    # newline, e.g. "veltsVELTS_BAD_LLM_MODEL=...". The deployment helper has
-    # historically handled this exact malformed local file, so the session
-    # helper must interpret it consistently rather than denying a valid user.
     $joinedMarker = 'VELTS_BAD_LLM_MODEL='
     $joinedIndex = $raw.IndexOf($joinedMarker, [System.StringComparison]::Ordinal)
     if ($joinedIndex -ge 0) {
@@ -46,24 +41,71 @@ function Get-AllowedIdentitiesRaw([hashtable]$Values) {
     return $raw
 }
 
+function ConvertTo-NativeJsonArgument([string]$Json) {
+    if ($PSVersionTable.PSEdition -eq 'Desktop') {
+        return $Json.Replace('"', '\"')
+    }
+
+    return $Json
+}
+
+function Get-LiveKitUrl([hashtable]$Values) {
+    $fromEnv = ([string]$Values['LIVEKIT_URL']).Trim()
+    if ($fromEnv -match '^wss://[A-Za-z0-9.-]+(?::[0-9]+)?(?:/.*)?$') {
+        return $fromEnv
+    }
+
+    return 'wss://veltsapp-j8mqf7tp.livekit.cloud'
+}
+
+function Get-PythonCommand {
+    $py = Get-Command py -ErrorAction SilentlyContinue
+    if ($py) {
+        return $py.Source
+    }
+
+    $python = Get-Command python -ErrorAction SilentlyContinue
+    if ($python) {
+        return $python.Source
+    }
+
+    throw 'Python launcher (py) or python.exe not found.'
+}
+
+function Get-FreeLoopbackPort {
+    $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
+    try {
+        $listener.Start()
+        return ([System.Net.IPEndPoint]$listener.LocalEndpoint).Port
+    }
+    finally {
+        $listener.Stop()
+    }
+}
+
 if (-not (Get-Command lk -ErrorAction SilentlyContinue)) {
-    throw 'LiveKit CLI (lk) não encontrado.'
+    throw 'LiveKit CLI (lk) not found.'
 }
 
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-    throw 'Git não encontrado.'
+    throw 'Git not found.'
+}
+
+if (-not (Get-Command Set-Clipboard -ErrorAction SilentlyContinue)) {
+    throw 'Set-Clipboard is not available in this PowerShell.'
 }
 
 $repoRoot = (& git rev-parse --show-toplevel 2>$null).Trim()
 if (-not $repoRoot) {
-    throw 'Execute este script dentro do repositório Git do Velts-Bad.'
+    throw 'Run this script from inside the Velts-Bad Git repository.'
 }
 Set-Location $repoRoot
 
 $envValues = Read-DotEnv '.env.local'
+$liveKitUrl = Get-LiveKitUrl $envValues
 $allowedRaw = Get-AllowedIdentitiesRaw $envValues
 if (-not $allowedRaw) {
-    throw 'VELTS_BAD_ALLOWED_IDENTITIES ausente ou vazio em .env.local.'
+    throw 'VELTS_BAD_ALLOWED_IDENTITIES is missing or empty in .env.local.'
 }
 
 $allowed = @(
@@ -74,33 +116,27 @@ $allowed = @(
 
 $normalizedIdentity = $Identity.Trim().ToLowerInvariant()
 if (-not $normalizedIdentity) {
-    throw 'Identity vazia não é permitida.'
+    throw 'Identity cannot be empty.'
 }
 
-# Keep CLI values unambiguous and predictable. In particular, identities may
-# never start with "-", contain whitespace, quotes, shell metacharacters, or
-# exceed the small application-level identifier budget.
 if ($normalizedIdentity -notmatch '^[a-z0-9][a-z0-9._@-]{0,63}$') {
-    throw 'Identity inválida. Use 1-64 caracteres: a-z, 0-9, ponto, sublinhado, @ ou hífen; o primeiro caractere deve ser alfanumérico.'
+    throw 'Invalid identity. Use 1-64 chars: a-z, 0-9, dot, underscore, @ or hyphen; first char must be alphanumeric.'
 }
 
 if ($allowed -notcontains $normalizedIdentity) {
-    throw "Identity '$Identity' não está na allowlist local do Velts-Bad."
+    throw "Identity '$Identity' is not in the local Velts-Bad allowlist."
 }
 
 $room = "velts-bad-$([guid]::NewGuid().ToString('N').Substring(0, 16))"
 $ttl = "${ValidForMinutes}m"
 $agentName = 'velts-bad'
+$grantJson = '{"canPublishData":false}'
+$grant = ConvertTo-NativeJsonArgument $grantJson
 
-# The participant only needs to send microphone audio and receive the agent's
-# audio. Explicitly disable data/metadata privileges instead of relying on
-# LiveKit defaults.
-$grant = '{"canPublish":true,"canSubscribe":true,"canPublishData":false,"canUpdateOwnMetadata":false}'
+Write-Host "Preparing private session [$room] for identity [$normalizedIdentity]..."
+Write-Host "Temporary token TTL: $ttl. The token value will not be printed."
 
-Write-Host "Abrindo sessão privada em sala única [$room] para identity [$normalizedIdentity]..."
-Write-Host "Token temporário: $ttl. O valor do token não será exibido."
-
-& lk token create `
+$tokenOutput = & lk token create `
     --identity $normalizedIdentity `
     --room $room `
     --agent $agentName `
@@ -108,10 +144,72 @@ Write-Host "Token temporário: $ttl. O valor do token não será exibido."
     --allow-source microphone `
     --grant $grant `
     --valid-for $ttl `
-    --open meet | Out-Null
+    --token-only
 
 if ($LASTEXITCODE -ne 0) {
-    throw "LiveKit CLI encerrou com código $LASTEXITCODE ao criar a sessão privada."
+    throw "LiveKit CLI exited with code $LASTEXITCODE while creating the private token."
 }
 
-Write-Host "Sessão privada aberta. Sala: $room"
+$tokenCandidates = @(
+    $tokenOutput |
+        ForEach-Object { ([string]$_).Trim() } |
+        Where-Object { $_ -match '^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$' }
+)
+
+if ($tokenCandidates.Count -ne 1) {
+    throw 'LiveKit CLI did not return exactly one valid JWT. Token was not copied.'
+}
+
+$token = $tokenCandidates[0]
+Set-Clipboard -Value $token
+
+$pythonCommand = Get-PythonCommand
+$clientDir = Join-Path $repoRoot 'scripts'
+$clientFile = Join-Path $clientDir 'private-session-client.html'
+if (-not (Test-Path $clientFile)) {
+    throw 'Private session browser client is missing.'
+}
+
+$port = Get-FreeLoopbackPort
+$serverArgs = @('-m', 'http.server', [string]$port, '--bind', '127.0.0.1', '--directory', $clientDir)
+$serverProcess = Start-Process -FilePath $pythonCommand -ArgumentList $serverArgs -WindowStyle Hidden -PassThru
+
+$serverParam = [uri]::EscapeDataString($liveKitUrl)
+$roomParam = [uri]::EscapeDataString($room)
+$clientUrl = "http://127.0.0.1:$port/private-session-client.html?server=$serverParam&room=$roomParam"
+
+$ready = $false
+for ($attempt = 0; $attempt -lt 20; $attempt++) {
+    Start-Sleep -Milliseconds 150
+    try {
+        $response = Invoke-WebRequest -UseBasicParsing -Uri $clientUrl -TimeoutSec 2
+        if ($response.StatusCode -eq 200) {
+            $ready = $true
+            break
+        }
+    }
+    catch {
+        if ($serverProcess.HasExited) {
+            break
+        }
+    }
+}
+
+if (-not $ready) {
+    if (-not $serverProcess.HasExited) {
+        Stop-Process -Id $serverProcess.Id -Force -ErrorAction SilentlyContinue
+    }
+    Set-Clipboard -Value '[cleared]'
+    throw 'Local private-session client failed to start.'
+}
+
+Start-Process $clientUrl
+
+Write-Host 'Private mic-only browser client opened.'
+Write-Host "LiveKit URL: $liveKitUrl"
+Write-Host "Room: $room"
+Write-Host 'Token: copied to clipboard. Paste it into the password field and click Connect.'
+Write-Host 'The page never requests camera access and clears the token field after connecting.'
+Write-Host "Local web server PID: $($serverProcess.Id)"
+Write-Host "After the test, stop it with: Stop-Process -Id $($serverProcess.Id)"
+Write-Host "If needed, overwrite the clipboard with: Set-Clipboard -Value '[cleared]'"
