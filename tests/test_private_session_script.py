@@ -7,6 +7,10 @@ def script_text() -> str:
     return SCRIPT_PATH.read_text(encoding="utf-8")
 
 
+def test_private_session_script_is_ascii_safe_for_windows_powershell_5():
+    SCRIPT_PATH.read_bytes().decode("ascii")
+
+
 def test_private_session_token_is_least_privilege():
     text = script_text()
 
@@ -55,14 +59,13 @@ def test_private_session_recovers_legacy_concatenated_allowlist():
     assert "$allowedRaw = Get-AllowedIdentitiesRaw $envValues" in text
 
 
-def test_private_session_resolves_livekit_url_without_exposing_secret():
+def test_private_session_uses_fixed_safe_livekit_url_fallback():
     text = script_text()
 
     assert "function Get-LiveKitUrl" in text
-    assert "& lk project list" in text
-    assert "lk project list --json" not in text
-    assert "wss://" in text
+    assert "wss://veltsapp-j8mqf7tp.livekit.cloud" in text
     assert "$liveKitUrl = Get-LiveKitUrl $envValues" in text
+    assert "lk project list" not in text
     assert "LIVEKIT_API_SECRET" not in text
 
 
@@ -80,7 +83,7 @@ def test_private_session_uses_agents_playground_instead_of_meet():
 def test_private_session_never_prints_jwt():
     text = script_text()
 
-    assert "Token: copiado para a área de transferência" in text
+    assert "Token: copied to clipboard" in text
     assert "Write-Host $token" not in text
     assert "Write-Output $token" not in text
     assert "Write-Host $tokenOutput" not in text
