@@ -30,6 +30,7 @@ if (-not $envValues['GROQ_API_KEY']) {
 
 $allowedIdentities = [string]$envValues['VELTS_BAD_ALLOWED_IDENTITIES']
 $llmModel = [string]$envValues['VELTS_BAD_LLM_MODEL']
+$allowConsole = [string]$envValues['VELTS_BAD_ALLOW_CONSOLE']
 
 # Recover safely from a common PowerShell Add-Content edge case where a file
 # without a trailing newline causes the next variable to be glued to the
@@ -51,13 +52,21 @@ if (-not $llmModel -or $llmModel -eq 'llama-3.3-70b-versatile') {
     $llmModel = 'openai/gpt-oss-20b'
 }
 
+# Keep the LiveKit Agent Console usable during development. The agent only
+# bypasses the contact allowlist when BOTH this flag is true and the room name
+# is a LiveKit console room (console-*).
+if (-not $allowConsole) {
+    $allowConsole = 'true'
+}
+
 $tempSecrets = Join-Path ([System.IO.Path]::GetTempPath()) ("velts-bad-secrets-" + [guid]::NewGuid().ToString('N') + '.env')
 
 try {
     $secretLines = @(
         "GROQ_API_KEY=$($envValues['GROQ_API_KEY'])",
         "VELTS_BAD_ALLOWED_IDENTITIES=$allowedIdentities",
-        "VELTS_BAD_LLM_MODEL=$llmModel"
+        "VELTS_BAD_LLM_MODEL=$llmModel",
+        "VELTS_BAD_ALLOW_CONSOLE=$allowConsole"
     )
 
     # Windows PowerShell 5.1 writes a UTF-8 BOM with Set-Content -Encoding utf8.
@@ -66,7 +75,7 @@ try {
     $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
     [System.IO.File]::WriteAllLines($tempSecrets, $secretLines, $utf8NoBom)
 
-    Write-Host 'Prepared LiveKit secrets: GROQ_API_KEY, VELTS_BAD_ALLOWED_IDENTITIES, VELTS_BAD_LLM_MODEL'
+    Write-Host 'Prepared LiveKit secrets: GROQ_API_KEY, VELTS_BAD_ALLOWED_IDENTITIES, VELTS_BAD_LLM_MODEL, VELTS_BAD_ALLOW_CONSOLE'
 
     if (Test-Path 'livekit.toml') {
         Write-Host 'Deploying new Velts-Bad version to LiveKit Cloud...'
