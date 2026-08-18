@@ -31,3 +31,28 @@ def is_allowed_identity(
         else frozenset(normalize_identity(item) for item in allowed if item.strip())
     )
     return normalized_identity in normalized_allowed
+
+
+def identities_match(left: str | None, right: str | None) -> bool:
+    if not left or not right:
+        return False
+    return normalize_identity(left) == normalize_identity(right)
+
+
+def should_accept_participant(
+    identity: str | None,
+    *,
+    linked_identity: str | None = None,
+    allowed: Iterable[str] | None = None,
+) -> bool:
+    """Enforce one authorized remote participant per private room.
+
+    Before a participant is linked, the first allowlisted identity may be selected.
+    After selection, only that exact identity remains authorized in the room. This
+    prevents a second allowlisted contact from joining another person's session.
+    """
+    if not is_allowed_identity(identity, allowed):
+        return False
+    if linked_identity is None:
+        return True
+    return identities_match(identity, linked_identity)
