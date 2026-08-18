@@ -171,8 +171,13 @@ if (-not (Test-Path $clientFile)) {
 }
 
 $port = Get-FreeLoopbackPort
-$serverArgs = @('-m', 'http.server', [string]$port, '--bind', '127.0.0.1', '--directory', $clientDir)
-$serverProcess = Start-Process -FilePath $pythonCommand -ArgumentList $serverArgs -WindowStyle Hidden -PassThru
+$serverArgs = @('-m', 'http.server', [string]$port, '--bind', '127.0.0.1')
+$serverProcess = Start-Process `
+    -FilePath $pythonCommand `
+    -ArgumentList $serverArgs `
+    -WorkingDirectory $clientDir `
+    -WindowStyle Hidden `
+    -PassThru
 
 $serverParam = [uri]::EscapeDataString($liveKitUrl)
 $roomParam = [uri]::EscapeDataString($room)
