@@ -149,6 +149,10 @@ async def velts_bad(ctx: JobContext) -> None:
         room=ctx.room,
     )
 
+    await session.generate_reply(
+        instructions="Cumprimente o contato autorizado em português do Brasil, em uma frase curta, já usando sua personalidade sarcástica e impaciente."
+    )
+
 
 if __name__ == "__main__":
     cli.run_app(server)
