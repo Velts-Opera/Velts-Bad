@@ -81,9 +81,16 @@ O helper:
 6. permite publicar somente `microphone`;
 7. permite assinar a voz do agente;
 8. proíbe publicação de data e alteração de metadata;
-9. abre o LiveKit Meet sem imprimir o token no terminal.
+9. gera o JWT sem imprimi-lo, valida o formato e copia o token para a área de transferência;
+10. abre o LiveKit Agents Playground, que é adequado para teste de agentes sem exigir publicação de câmera.
 
-A validade do token limita a entrada inicial; a duração da conversa é controlada separadamente pelo agente. Não reutilize a mesma sala entre contatos.
+No Playground, cole o token copiado, mantenha a câmera desativada e habilite somente o microfone. Após conectar, limpe a área de transferência:
+
+```powershell
+Set-Clipboard -Value ''
+```
+
+O antigo `meet.livekit.io/custom` não deve ser usado com esse token mic-only porque o cliente de videoconferência tenta publicar câmera automaticamente. A validade do token limita a entrada inicial; a duração da conversa é controlada separadamente pelo agente. Não reutilize a mesma sala entre contatos.
 
 ## Deploy de produção
 
