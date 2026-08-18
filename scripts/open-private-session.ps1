@@ -10,7 +10,7 @@ $ErrorActionPreference = 'Stop'
 
 function Read-DotEnv([string]$Path) {
     if (-not (Test-Path $Path)) {
-        throw "Arquivo $Path não encontrado."
+        throw "File $Path not found."
     }
 
     $values = @{}
@@ -34,9 +34,7 @@ function Get-AllowedIdentitiesRaw([hashtable]$Values) {
 
     # Recover from an old PowerShell Add-Content edge case where the next env
     # assignment was appended to the allowlist because the file lacked a final
-    # newline, e.g. "veltsVELTS_BAD_LLM_MODEL=...". The deployment helper has
-    # historically handled this exact malformed local file, so the session
-    # helper must interpret it consistently rather than denying a valid user.
+    # newline, e.g. "veltsVELTS_BAD_LLM_MODEL=...".
     $joinedMarker = 'VELTS_BAD_LLM_MODEL='
     $joinedIndex = $raw.IndexOf($joinedMarker, [System.StringComparison]::Ordinal)
     if ($joinedIndex -ge 0) {
@@ -47,10 +45,8 @@ function Get-AllowedIdentitiesRaw([hashtable]$Values) {
 }
 
 function ConvertTo-NativeJsonArgument([string]$Json) {
-    # Windows PowerShell 5.x (PSEdition Desktop) strips unescaped inner double
-    # quotes when marshaling string arguments to native executables. LiveKit's
-    # --grant flag expects real JSON, so escape the quotes for that legacy
-    # command-line marshaler. PowerShell 7+ passes the JSON string correctly.
+    # Windows PowerShell 5.x strips unescaped inner double quotes when passing
+    # string arguments to native executables. PowerShell 7+ does not.
     if ($PSVersionTable.PSEdition -eq 'Desktop') {
         return $Json.Replace('"', '\"')
     }
@@ -60,47 +56,31 @@ function ConvertTo-NativeJsonArgument([string]$Json) {
 
 function Get-LiveKitUrl([hashtable]$Values) {
     $fromEnv = ([string]$Values['LIVEKIT_URL']).Trim()
-    if ($fromEnv -match '^wss://[^\s]+$') {
+    if ($fromEnv -match '^wss://[A-Za-z0-9.-]+(?::[0-9]+)?(?:/.*)?$') {
         return $fromEnv
     }
 
-    # The authenticated LiveKit CLI already knows the selected project URL.
-    # Use the human-readable project list because it does not expose API secret;
-    # extract only the URL from the row marked as the default project (*).
-    $projectLines = @(& lk project list 2>$null)
-    if ($LASTEXITCODE -ne 0) {
-        throw 'Não foi possível consultar os projetos autenticados no LiveKit CLI.'
-    }
-
-    $defaultLine = $projectLines |
-        Where-Object { $_ -match '\*' -and $_ -match 'wss://' } |
-        Select-Object -First 1
-
-    if ($defaultLine) {
-        $match = [regex]::Match([string]$defaultLine, 'wss://[^\s│]+' )
-        if ($match.Success) {
-            return $match.Value
-        }
-    }
-
-    throw 'LIVEKIT_URL ausente em .env.local e não foi possível obter a URL do projeto padrão via lk project list.'
+    # This repository and deploy helper are intentionally bound to the VeltsApp
+    # LiveKit Cloud project. The project URL is public connection metadata, not
+    # a credential, so a fixed fallback is safer than parsing CLI table output.
+    return 'wss://veltsapp-j8mqf7tp.livekit.cloud'
 }
 
 if (-not (Get-Command lk -ErrorAction SilentlyContinue)) {
-    throw 'LiveKit CLI (lk) não encontrado.'
+    throw 'LiveKit CLI (lk) not found.'
 }
 
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
-    throw 'Git não encontrado.'
+    throw 'Git not found.'
 }
 
 if (-not (Get-Command Set-Clipboard -ErrorAction SilentlyContinue)) {
-    throw 'Set-Clipboard não está disponível neste PowerShell.'
+    throw 'Set-Clipboard is not available in this PowerShell.'
 }
 
 $repoRoot = (& git rev-parse --show-toplevel 2>$null).Trim()
 if (-not $repoRoot) {
-    throw 'Execute este script dentro do repositório Git do Velts-Bad.'
+    throw 'Run this script from inside the Velts-Bad Git repository.'
 }
 Set-Location $repoRoot
 
@@ -109,7 +89,7 @@ $liveKitUrl = Get-LiveKitUrl $envValues
 
 $allowedRaw = Get-AllowedIdentitiesRaw $envValues
 if (-not $allowedRaw) {
-    throw 'VELTS_BAD_ALLOWED_IDENTITIES ausente ou vazio em .env.local.'
+    throw 'VELTS_BAD_ALLOWED_IDENTITIES is missing or empty in .env.local.'
 }
 
 $allowed = @(
@@ -120,18 +100,16 @@ $allowed = @(
 
 $normalizedIdentity = $Identity.Trim().ToLowerInvariant()
 if (-not $normalizedIdentity) {
-    throw 'Identity vazia não é permitida.'
+    throw 'Identity cannot be empty.'
 }
 
-# Keep CLI values unambiguous and predictable. In particular, identities may
-# never start with "-", contain whitespace, quotes, shell metacharacters, or
-# exceed the small application-level identifier budget.
+# Keep CLI values unambiguous and predictable.
 if ($normalizedIdentity -notmatch '^[a-z0-9][a-z0-9._@-]{0,63}$') {
-    throw 'Identity inválida. Use 1-64 caracteres: a-z, 0-9, ponto, sublinhado, @ ou hífen; o primeiro caractere deve ser alfanumérico.'
+    throw 'Invalid identity. Use 1-64 chars: a-z, 0-9, dot, underscore, @ or hyphen; first char must be alphanumeric.'
 }
 
 if ($allowed -notcontains $normalizedIdentity) {
-    throw "Identity '$Identity' não está na allowlist local do Velts-Bad."
+    throw "Identity '$Identity' is not in the local Velts-Bad allowlist."
 }
 
 $room = "velts-bad-$([guid]::NewGuid().ToString('N').Substring(0, 16))"
@@ -139,15 +117,13 @@ $ttl = "${ValidForMinutes}m"
 $agentName = 'velts-bad'
 $playgroundUrl = 'https://agents-playground.livekit.io/'
 
-# --allow-source microphone restricts publish tracks to the microphone.
-# LiveKit defaults canSubscribe=true and canUpdateOwnMetadata=false. The one
-# additional permission that must be overridden is canPublishData, whose
-# default follows canPublish and would otherwise be true.
+# Only microphone publication is allowed. canPublishData must be explicitly
+# false because LiveKit otherwise derives it from canPublish.
 $grantJson = '{"canPublishData":false}'
 $grant = ConvertTo-NativeJsonArgument $grantJson
 
-Write-Host "Preparando sessão privada [$room] para identity [$normalizedIdentity]..."
-Write-Host "Token temporário: $ttl. O valor não será impresso."
+Write-Host "Preparing private session [$room] for identity [$normalizedIdentity]..."
+Write-Host "Temporary token TTL: $ttl. The token value will not be printed."
 
 $tokenOutput = & lk token create `
     --identity $normalizedIdentity `
@@ -160,7 +136,7 @@ $tokenOutput = & lk token create `
     --token-only
 
 if ($LASTEXITCODE -ne 0) {
-    throw "LiveKit CLI encerrou com código $LASTEXITCODE ao criar o token privado."
+    throw "LiveKit CLI exited with code $LASTEXITCODE while creating the private token."
 }
 
 $tokenCandidates = @(
@@ -170,16 +146,16 @@ $tokenCandidates = @(
 )
 
 if ($tokenCandidates.Count -ne 1) {
-    throw 'O LiveKit CLI não retornou exatamente um JWT válido. Token não copiado.'
+    throw 'LiveKit CLI did not return exactly one valid JWT. Token was not copied.'
 }
 
 $token = $tokenCandidates[0]
 Set-Clipboard -Value $token
 Start-Process $playgroundUrl
 
-Write-Host "Agents Playground aberto."
+Write-Host 'Agents Playground opened.'
 Write-Host "LiveKit URL: $liveKitUrl"
-Write-Host "Sala: $room"
-Write-Host "Token: copiado para a área de transferência; cole no campo de token do Playground."
-Write-Host "Mantenha a câmera DESATIVADA e habilite somente o microfone."
-Write-Host "Depois de conectar, limpe a área de transferência com: Set-Clipboard -Value ''"
+Write-Host "Room: $room"
+Write-Host 'Token: copied to clipboard. Paste it into the Playground token field.'
+Write-Host 'Keep CAMERA OFF and enable MICROPHONE only.'
+Write-Host "After connecting, clear the clipboard with: Set-Clipboard -Value ''"
