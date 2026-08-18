@@ -1,0 +1,19 @@
+[project]
+name = "velts-bad"
+version = "0.1.0"
+description = "Private LiveKit voice agent powered by Groq"
+requires-python = ">=3.11"
+dependencies = [
+  "livekit-agents[groq]~=1.5",
+  "python-dotenv>=1.0,<2",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8,<9",
+  "pytest-asyncio>=0.25,<1",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+pythonpath = ["."]
