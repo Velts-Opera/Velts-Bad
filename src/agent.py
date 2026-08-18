@@ -36,10 +36,23 @@ def env(name: str, default: str) -> str:
     return value or default
 
 
+def env_first(names: tuple[str, ...], default: str) -> str:
+    for name in names:
+        value = os.getenv(name, "").strip()
+        if value:
+            return value
+    return default
+
+
 class VeltsBadAgent(Agent):
     def __init__(self) -> None:
         super().__init__(
-            llm=groq.LLM(model=env("VELTS_BAD_LLM_MODEL", DEFAULT_LLM_MODEL)),
+            llm=groq.LLM(
+                model=env_first(
+                    ("VELTS_BAD_LLM_MODEL", "GROQ_MODEL"),
+                    DEFAULT_LLM_MODEL,
+                )
+            ),
             instructions=textwrap.dedent(
                 """\
                 Você é o Velts-Bad, um agente de voz privado para conversas com contatos autorizados.
