@@ -41,7 +41,6 @@ DEFAULT_MAX_TURN_SECONDS = 45.0
 DEFAULT_MAX_COMPLETION_TOKENS = 256
 
 ParticipantCallback = Callable[[rtc.RemoteParticipant], None]
-TrackPublishedCallback = Callable[[rtc.RemoteTrackPublication, rtc.RemoteParticipant], None]
 
 
 def env(name: str, default: str) -> str:
@@ -151,9 +150,11 @@ async def wait_for_private_participant(
 ) -> tuple[rtc.RemoteParticipant | None, ParticipantCallback | None]:
     """Select the first allowlisted participant and evict everyone else.
 
-    The worker connects without subscribing to any remote tracks. The same
-    participant callback remains active for the full room lifetime. Any eviction
-    failure deletes the room so privacy fails closed.
+    Subscribe to audio tracks using the Agents framework's AUDIO_ONLY mode so
+    RoomIO can manage the linked participant's audio normally. RoomOptions later
+    binds the AI pipeline to the selected identity, while this callback evicts
+    every other participant for the full room lifetime. Any eviction failure
+    deletes the room so privacy fails closed.
     """
     loop = asyncio.get_running_loop()
     selected_future: asyncio.Future[rtc.RemoteParticipant] = loop.create_future()
@@ -186,7 +187,7 @@ async def wait_for_private_participant(
         schedule_removal(identity, reason)
 
     ctx.room.on("participant_connected", on_participant_connected)
-    await ctx.connect(auto_subscribe=AutoSubscribe.SUBSCRIBE_NONE)
+    await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
 
     for participant in tuple(ctx.room.remote_participants.values()):
         on_participant_connected(participant)
@@ -218,40 +219,20 @@ async def wait_for_private_participant(
     return participant, on_participant_connected
 
 
-def configure_private_media(
+def configure_private_output(
     ctx: JobContext,
     participant: rtc.RemoteParticipant,
-) -> TrackPublishedCallback:
-    """Restrict both directions of media to the linked participant only."""
-    identity = participant.identity
-
+) -> None:
+    """Allow only the linked participant to subscribe to agent output tracks."""
     ctx.room.local_participant.set_track_subscription_permissions(
         allow_all_participants=False,
         participant_permissions=[
             rtc.ParticipantTrackPermission(
-                participant_identity=identity,
+                participant_identity=participant.identity,
                 allow_all=True,
             )
         ],
     )
-
-    def subscribe_if_linked_audio(
-        publication: rtc.RemoteTrackPublication,
-        remote_participant: rtc.RemoteParticipant,
-    ) -> None:
-        if remote_participant.identity != identity:
-            return
-        if publication.kind != rtc.TrackKind.KIND_AUDIO:
-            return
-        publication.set_subscribed(True)
-
-    ctx.room.on("track_published", subscribe_if_linked_audio)
-
-    for publication in tuple(participant.track_publications.values()):
-        if isinstance(publication, rtc.RemoteTrackPublication):
-            subscribe_if_linked_audio(publication, participant)
-
-    return subscribe_if_linked_audio
 
 
 async def enforce_session_time_limit(session: AgentSession) -> None:
@@ -284,7 +265,7 @@ async def velts_bad(ctx: JobContext) -> None:
     if participant is None:
         return
 
-    media_guard = configure_private_media(ctx, participant)
+    configure_private_output(ctx, participant)
     logger.info("authorized private participant linked")
 
     session: AgentSession = AgentSession(
@@ -325,7 +306,6 @@ async def velts_bad(ctx: JobContext) -> None:
         timeout_task.cancel()
         if room_guard is not None:
             ctx.room.off("participant_connected", room_guard)
-        ctx.room.off("track_published", media_guard)
 
     await session.start(
         agent=VeltsBadAgent(),
