@@ -96,3 +96,10 @@ def test_private_session_validates_token_shape_before_clipboard():
     assert "^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$" in text
     assert "$tokenCandidates.Count -ne 1" in text
     assert "Set-Clipboard -Value $token" in text
+
+
+def test_private_session_clipboard_cleanup_works_on_windows_powershell_5():
+    text = script_text()
+
+    assert "Set-Clipboard -Value '[cleared]'" in text
+    assert "Set-Clipboard -Value ''" not in text
