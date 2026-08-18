@@ -26,8 +26,8 @@ logger = logging.getLogger("velts-bad")
 
 DEFAULT_LLM_MODEL = "openai/gpt-oss-20b"
 DEFAULT_STT_MODEL = "whisper-large-v3-turbo"
-DEFAULT_TTS_MODEL = "cartesia/sonic-3.5"
-DEFAULT_TTS_VOICE = "f786b574-daa5-4673-aa0c-cbe3e8534c02"
+DEFAULT_TTS_MODEL = "rime/coda"
+DEFAULT_TTS_VOICE = "estela"
 DEFAULT_LANGUAGE = "pt"
 
 
