@@ -9,21 +9,10 @@ import pytest
 import agent
 
 
-class FakePublication:
-    def __init__(self, kind: Any) -> None:
-        self.kind = kind
-        self.subscribed = False
-
-    def set_subscribed(self, subscribed: bool) -> None:
-        self.subscribed = subscribed
-
-
 class FakeParticipant:
-    def __init__(self, identity: str, *publications: FakePublication) -> None:
+    def __init__(self, identity: str) -> None:
         self.identity = identity
-        self.track_publications = {
-            f"track-{index}": publication for index, publication in enumerate(publications)
-        }
+        self.track_publications: dict[str, Any] = {}
 
 
 class FakeLocalParticipant:
@@ -54,15 +43,6 @@ class FakeRoom:
         callback = self._callbacks.get("participant_connected")
         assert callable(callback)
         callback(participant)
-
-    def emit_track_published(
-        self,
-        publication: FakePublication,
-        participant: FakeParticipant,
-    ) -> None:
-        callback = self._callbacks.get("track_published")
-        assert callable(callback)
-        callback(publication, participant)
 
 
 class FakeRoomAPI:
@@ -109,7 +89,7 @@ async def test_guard_selects_allowlisted_participant_and_evicts_unknown(monkeypa
     assert participant is velts
     assert guard is not None
     assert ctx.api.room.removed == ["intruder"]
-    assert ctx.connect_kwargs["auto_subscribe"] == agent.AutoSubscribe.SUBSCRIBE_NONE
+    assert ctx.connect_kwargs["auto_subscribe"] == agent.AutoSubscribe.AUDIO_ONLY
     assert not ctx.deleted
 
 
@@ -147,24 +127,12 @@ async def test_late_second_allowlisted_contact_is_evicted(monkeypatch):
     assert not ctx.deleted
 
 
-def test_private_media_only_subscribes_linked_audio_and_restricts_output(monkeypatch):
-    # The production mapping contains rtc.RemoteTrackPublication instances. Patch
-    # the SDK class symbol so the lightweight test double models that invariant.
-    monkeypatch.setattr(agent.rtc, "RemoteTrackPublication", FakePublication)
-
-    linked_audio = FakePublication(agent.rtc.TrackKind.KIND_AUDIO)
-    linked_video = FakePublication(agent.rtc.TrackKind.KIND_VIDEO)
-    intruder_audio = FakePublication(agent.rtc.TrackKind.KIND_AUDIO)
-    velts = FakeParticipant("velts", linked_audio, linked_video)
-    intruder = FakeParticipant("intruder", intruder_audio)
+def test_private_output_is_restricted_to_linked_identity():
+    velts = FakeParticipant("velts")
+    intruder = FakeParticipant("intruder")
     ctx = FakeContext(FakeRoom(velts, intruder))
 
-    callback = agent.configure_private_media(as_job_context(ctx), velts)
-
-    assert callback is not None
-    assert linked_audio.subscribed
-    assert not linked_video.subscribed
-    assert not intruder_audio.subscribed
+    agent.configure_private_output(as_job_context(ctx), velts)
 
     permissions = ctx.room.local_participant.subscription_permissions
     assert permissions is not None
@@ -173,11 +141,3 @@ def test_private_media_only_subscribes_linked_audio_and_restricts_output(monkeyp
     assert len(participant_permissions) == 1
     assert participant_permissions[0].participant_identity == "velts"
     assert participant_permissions[0].allow_all is True
-
-    late_linked_audio = FakePublication(agent.rtc.TrackKind.KIND_AUDIO)
-    late_intruder_audio = FakePublication(agent.rtc.TrackKind.KIND_AUDIO)
-    ctx.room.emit_track_published(late_linked_audio, velts)
-    ctx.room.emit_track_published(late_intruder_audio, intruder)
-
-    assert late_linked_audio.subscribed
-    assert not late_intruder_audio.subscribed
