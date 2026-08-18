@@ -36,12 +36,29 @@ def env(name: str, default: str) -> str:
     return value or default
 
 
+def env_bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name, "").strip().casefold()
+    if not value:
+        return default
+    return value in {"1", "true", "yes", "on"}
+
+
 def env_first(names: tuple[str, ...], default: str) -> str:
     for name in names:
         value = os.getenv(name, "").strip()
         if value:
             return value
     return default
+
+
+def is_livekit_console_room(room_name: str) -> bool:
+    return room_name.casefold().startswith("console-")
+
+
+def is_authorized_session(identity: str | None, room_name: str) -> bool:
+    if is_allowed_identity(identity):
+        return True
+    return env_bool("VELTS_BAD_ALLOW_CONSOLE") and is_livekit_console_room(room_name)
 
 
 class VeltsBadAgent(Agent):
@@ -101,7 +118,10 @@ class VeltsBadAgent(Agent):
 
 
 async def disconnect_unauthorized(ctx: JobContext, identity: str) -> None:
-    logger.warning("unauthorized participant blocked", extra={"identity": identity})
+    logger.warning(
+        "unauthorized participant blocked",
+        extra={"identity": identity, "room": ctx.room.name},
+    )
     try:
         async with api.LiveKitAPI() as lkapi:
             await lkapi.room.remove_participant(
@@ -121,11 +141,18 @@ async def velts_bad(ctx: JobContext) -> None:
     await ctx.connect()
     participant = await ctx.wait_for_participant()
 
-    if not is_allowed_identity(participant.identity):
+    if not is_authorized_session(participant.identity, ctx.room.name):
         await disconnect_unauthorized(ctx, participant.identity)
         return
 
-    logger.info("authorized participant connected", extra={"identity": participant.identity})
+    logger.info(
+        "authorized participant connected",
+        extra={
+            "identity": participant.identity,
+            "room": ctx.room.name,
+            "console_session": is_livekit_console_room(ctx.room.name),
+        },
+    )
 
     session = AgentSession(
         stt=groq.STT(
