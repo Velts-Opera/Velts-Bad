@@ -12,14 +12,22 @@ def test_private_session_token_is_least_privilege():
 
     assert "--join" in text
     assert "--allow-source microphone" in text
-    assert '"canPublish":true' in text
-    assert '"canSubscribe":true' in text
-    assert '"canPublishData":false' in text
-    assert '"canUpdateOwnMetadata":false' in text
+    assert '$grantJson = \'{"canPublishData":false}\'' in text
+    assert "--grant $grant" in text
+    assert "--allow-update-metadata" not in text
     assert "--admin" not in text
     assert "--create" not in text
     assert "--egress" not in text
     assert "--ingress" not in text
+
+
+def test_private_session_windows_powershell_preserves_grant_json_quotes():
+    text = script_text()
+
+    assert "function ConvertTo-NativeJsonArgument" in text
+    assert "$PSVersionTable.PSEdition -eq 'Desktop'" in text
+    assert "$Json.Replace('\"', '\\\"')" in text
+    assert "$grant = ConvertTo-NativeJsonArgument $grantJson" in text
 
 
 def test_private_session_is_bound_to_velts_bad_and_unique_room():
