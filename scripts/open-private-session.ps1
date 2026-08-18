@@ -46,6 +46,18 @@ function Get-AllowedIdentitiesRaw([hashtable]$Values) {
     return $raw
 }
 
+function ConvertTo-NativeJsonArgument([string]$Json) {
+    # Windows PowerShell 5.x (PSEdition Desktop) strips unescaped inner double
+    # quotes when marshaling string arguments to native executables. LiveKit's
+    # --grant flag expects real JSON, so escape the quotes for that legacy
+    # command-line marshaler. PowerShell 7+ passes the JSON string correctly.
+    if ($PSVersionTable.PSEdition -eq 'Desktop') {
+        return $Json.Replace('"', '\"')
+    }
+
+    return $Json
+}
+
 if (-not (Get-Command lk -ErrorAction SilentlyContinue)) {
     throw 'LiveKit CLI (lk) não encontrado.'
 }
@@ -92,10 +104,12 @@ $room = "velts-bad-$([guid]::NewGuid().ToString('N').Substring(0, 16))"
 $ttl = "${ValidForMinutes}m"
 $agentName = 'velts-bad'
 
-# The participant only needs to send microphone audio and receive the agent's
-# audio. Explicitly disable data/metadata privileges instead of relying on
-# LiveKit defaults.
-$grant = '{"canPublish":true,"canSubscribe":true,"canPublishData":false,"canUpdateOwnMetadata":false}'
+# --allow-source microphone already restricts publish tracks to the microphone.
+# LiveKit defaults canSubscribe=true and canUpdateOwnMetadata=false. The one
+# additional permission that must be overridden is canPublishData, whose
+# default follows canPublish and would otherwise be true.
+$grantJson = '{"canPublishData":false}'
+$grant = ConvertTo-NativeJsonArgument $grantJson
 
 Write-Host "Abrindo sessão privada em sala única [$room] para identity [$normalizedIdentity]..."
 Write-Host "Token temporário: $ttl. O valor do token não será exibido."
