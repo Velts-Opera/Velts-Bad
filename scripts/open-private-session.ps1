@@ -58,18 +58,25 @@ function Get-LiveKitUrl([hashtable]$Values) {
     return 'wss://veltsapp-j8mqf7tp.livekit.cloud'
 }
 
+function Test-PythonCommand([string]$CommandPath) {
+    try {
+        & $CommandPath --version *> $null
+        return ($LASTEXITCODE -eq 0)
+    }
+    catch {
+        return $false
+    }
+}
+
 function Get-PythonCommand {
-    $py = Get-Command py -ErrorAction SilentlyContinue
-    if ($py) {
-        return $py.Source
+    foreach ($name in @('py', 'python')) {
+        $command = Get-Command $name -ErrorAction SilentlyContinue
+        if ($command -and (Test-PythonCommand $command.Source)) {
+            return $command.Source
+        }
     }
 
-    $python = Get-Command python -ErrorAction SilentlyContinue
-    if ($python) {
-        return $python.Source
-    }
-
-    throw 'Python launcher (py) or python.exe not found.'
+    throw 'No functional Python launcher found. Expected py or python.exe.'
 }
 
 function Get-FreeLoopbackPort {
