@@ -51,9 +51,20 @@ function ConvertTo-NativeJsonArgument([string]$Json) {
 
 function Get-LiveKitUrl([hashtable]$Values) {
     $expected = 'wss://veltsapp-j8mqf7tp.livekit.cloud'
-    $fromEnv = ([string]$Values['LIVEKIT_URL']).Trim().TrimEnd('/')
+    $raw = ([string]$Values['LIVEKIT_URL']).Trim()
 
-    if ($fromEnv -and $fromEnv -ne $expected) {
+    if (-not $raw) {
+        return $expected
+    }
+
+    $isDoubleQuoted = $raw.Length -ge 2 -and $raw.StartsWith('"') -and $raw.EndsWith('"')
+    $isSingleQuoted = $raw.Length -ge 2 -and $raw.StartsWith("'") -and $raw.EndsWith("'")
+    if ($isDoubleQuoted -or $isSingleQuoted) {
+        $raw = $raw.Substring(1, $raw.Length - 2).Trim()
+    }
+
+    $fromEnv = $raw.TrimEnd('/')
+    if ($fromEnv -ne $expected) {
         throw 'LIVEKIT_URL does not match the Velts-Bad production LiveKit project.'
     }
 
