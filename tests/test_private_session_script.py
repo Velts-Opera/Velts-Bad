@@ -3,6 +3,7 @@ from pathlib import Path
 SCRIPT_PATH = Path("scripts/open-private-session.ps1")
 CLIENT_PATH = Path("scripts/private-session-client.html")
 CLIENT_JS_PATH = Path("scripts/private-session-client.js")
+EXPECTED_SERVER_URL = "wss://veltsapp-j8mqf7tp.livekit.cloud"
 
 
 def script_text() -> str:
@@ -68,6 +69,16 @@ def test_private_session_recovers_legacy_concatenated_allowlist():
     assert "$allowedRaw = Get-AllowedIdentitiesRaw $envValues" in text
 
 
+def test_private_session_is_pinned_to_production_livekit_endpoint():
+    text = script_text()
+
+    assert "function Get-LiveKitUrl" in text
+    assert f"$expected = '{EXPECTED_SERVER_URL}'" in text
+    assert "$fromEnv -and $fromEnv -ne $expected" in text
+    assert "LIVEKIT_URL does not match the Velts-Bad production LiveKit project" in text
+    assert "return $expected" in text
+
+
 def test_private_session_uses_local_client_not_removed_hosted_playground_or_meet():
     text = script_text()
 
@@ -117,10 +128,13 @@ def test_private_session_validates_token_shape_before_clipboard():
     assert "Set-Clipboard -Value $token" in text
 
 
-def test_local_client_csp_allows_local_external_script_but_not_inline_script():
+def test_local_client_csp_is_narrow_and_does_not_send_referrer():
     html = client_text()
 
     assert "script-src 'self' https://cdn.jsdelivr.net" in html
+    assert f"connect-src {EXPECTED_SERVER_URL} https://veltsapp-j8mqf7tp.livekit.cloud" in html
+    assert "connect-src wss: ws: https:" not in html
+    assert '<meta name="referrer" content="no-referrer">' in html
     assert '<script src="/private-session-client.js"></script>' in html
     assert "<script>" not in html
 
@@ -131,6 +145,15 @@ def test_local_client_populates_server_and_room_from_query_params():
     assert "new URLSearchParams(window.location.search)" in js
     assert "serverInput.value = params.get('server') || ''" in js
     assert "roomInput.value = params.get('room') || ''" in js
+
+
+def test_local_client_rejects_redirected_server_or_invalid_room():
+    js = client_js_text()
+
+    assert f"const EXPECTED_SERVER_URL = '{EXPECTED_SERVER_URL}'" in js
+    assert "const PRIVATE_ROOM_PATTERN = /^velts-bad-[0-9a-f]{16}$/" in js
+    assert "serverUrl !== EXPECTED_SERVER_URL" in js
+    assert "!PRIVATE_ROOM_PATTERN.test(roomName)" in js
 
 
 def test_local_client_reads_token_from_clipboard_on_connect_with_manual_fallback():
@@ -154,6 +177,7 @@ def test_local_client_is_microphone_only_and_subscribes_audio():
     assert "RoomEvent.TrackSubscribed" in js
     assert "track.kind !== Track.Kind.Audio" in js
     assert "track.attach()" in js
+    assert "Fale com a Stella" in js
 
 
 def test_local_client_does_not_persist_token_in_url_or_storage():
