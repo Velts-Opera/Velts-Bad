@@ -1,6 +1,8 @@
 (() => {
   'use strict';
 
+  const EXPECTED_SERVER_URL = 'wss://veltsapp-j8mqf7tp.livekit.cloud';
+  const PRIVATE_ROOM_PATTERN = /^velts-bad-[0-9a-f]{16}$/;
   const params = new URLSearchParams(window.location.search);
   const serverInput = document.getElementById('server');
   const roomInput = document.getElementById('roomName');
@@ -52,14 +54,15 @@
   }
 
   connectButton.addEventListener('click', async () => {
-    const serverUrl = serverInput.value.trim();
+    const serverUrl = serverInput.value.trim().replace(/\/$/, '');
+    const roomName = roomInput.value.trim();
 
-    if (!serverUrl.startsWith('wss://')) {
-      setStatus('LiveKit URL ausente ou invalida. Feche esta pagina e rode o helper novamente.', 'error');
+    if (serverUrl !== EXPECTED_SERVER_URL) {
+      setStatus('LiveKit URL invalida para este projeto. Feche esta pagina e rode o helper novamente.', 'error');
       return;
     }
-    if (!roomInput.value.trim().startsWith('velts-bad-')) {
-      setStatus('Sala privada ausente ou invalida. Feche esta pagina e rode o helper novamente.', 'error');
+    if (!PRIVATE_ROOM_PATTERN.test(roomName)) {
+      setStatus('Sala privada invalida. Feche esta pagina e rode o helper novamente.', 'error');
       return;
     }
 
@@ -94,7 +97,7 @@
       await room.localParticipant.setMicrophoneEnabled(true);
 
       disconnectButton.disabled = false;
-      setStatus('Conectado. Microfone ativo. Fale com a Estela.', 'ok');
+      setStatus('Conectado. Microfone ativo. Fale com a Stella.', 'ok');
     } catch (error) {
       connectButton.disabled = false;
       disconnectButton.disabled = true;
