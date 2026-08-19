@@ -50,12 +50,14 @@ function ConvertTo-NativeJsonArgument([string]$Json) {
 }
 
 function Get-LiveKitUrl([hashtable]$Values) {
-    $fromEnv = ([string]$Values['LIVEKIT_URL']).Trim()
-    if ($fromEnv -match '^wss://[A-Za-z0-9.-]+(?::[0-9]+)?(?:/.*)?$') {
-        return $fromEnv
+    $expected = 'wss://veltsapp-j8mqf7tp.livekit.cloud'
+    $fromEnv = ([string]$Values['LIVEKIT_URL']).Trim().TrimEnd('/')
+
+    if ($fromEnv -and $fromEnv -ne $expected) {
+        throw 'LIVEKIT_URL does not match the Velts-Bad production LiveKit project.'
     }
 
-    return 'wss://veltsapp-j8mqf7tp.livekit.cloud'
+    return $expected
 }
 
 function Test-PythonCommand([string]$CommandPath) {

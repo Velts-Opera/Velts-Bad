@@ -6,15 +6,18 @@ Agente de voz privado em português do Brasil, executado no LiveKit Cloud.
 
 - LiveKit Cloud: transporte de áudio, salas, dispatch e runtime do agente.
 - Groq: STT (`whisper-large-v3-turbo`) e LLM (`openai/gpt-oss-20b`).
-- LiveKit Inference + Rime Coda: TTS em português com a voz `estela`.
+- LiveKit Inference + Rime Coda: TTS em português com a voz técnica `estela`.
+- Persona da assistente: `Stella`.
 - Acesso: deny-by-default por `VELTS_BAD_ALLOWED_IDENTITIES`.
-- Sessão: uma identity autorizada por sala; participantes adicionais são removidos e mídia é isolada à identity vinculada.
+- Sessão: uma identity autorizada por sala; participantes adicionais são removidos e a saída do agente é restrita à identity vinculada.
 - O Velts-Bad é independente do ChatFacil, Agente444 e Meta/WhatsApp.
 
 ## Privacidade
 
 - `AgentSession.start(..., record=False)` desativa a gravação/upload da sessão pelo LiveKit Agent Observability.
-- O worker não auto-assina tracks; ele assina apenas áudio da identity autorizada.
+- O worker conecta em `AutoSubscribe.AUDIO_ONLY`, evitando assinatura automática de vídeo.
+- `RoomOptions(participant_identity=...)` vincula a pipeline de voz à identity autorizada selecionada antes da sessão iniciar.
+- Participantes não autorizados ou adicionais são removidos; falha de remoção apaga a sala (fail closed).
 - A faixa publicada pelo agente só pode ser assinada pela identity vinculada.
 - Texto de entrada/saída do RoomIO está desativado.
 - Logs de aplicação não registram identity, nome da sala, token ou conteúdo da conversa.
@@ -24,7 +27,8 @@ Agente de voz privado em português do Brasil, executado no LiveKit Cloud.
 
 - LiveKit CLI (`lk`) autenticada no projeto correto.
 - Git.
-- Python 3.13/`uv` apenas para desenvolvimento local; CI valida o release em Linux.
+- Python funcional (`py` ou `python`) para servir o cliente local de teste em `127.0.0.1`.
+- Python 3.13/`uv` para desenvolvimento local; CI valida o release em Linux.
 
 ## Segredos
 
@@ -45,7 +49,7 @@ VELTS_BAD_ALLOWED_IDENTITIES=velts
 VELTS_BAD_LLM_MODEL=openai/gpt-oss-20b
 ```
 
-Não cole o conteúdo do `.env.local` em chats, issues, PRs ou logs.
+O helper de sessão privada aceita apenas o endpoint de produção do projeto Velts-Bad: `wss://veltsapp-j8mqf7tp.livekit.cloud`. Não cole o conteúdo do `.env.local` em chats, issues, PRs ou logs.
 
 ## Dependências e testes
 
@@ -75,15 +79,30 @@ O helper:
 
 1. exige que a identity esteja em `VELTS_BAD_ALLOWED_IDENTITIES`;
 2. aceita somente identities em formato seguro de 1–64 caracteres;
-3. gera uma sala aleatória por sessão;
+3. gera uma sala aleatória `velts-bad-<16 hex>` por sessão;
 4. fixa o dispatch no agente `velts-bad`;
 5. cria token curto, 15 minutos por padrão;
 6. permite publicar somente `microphone`;
-7. permite assinar a voz do agente;
-8. proíbe publicação de data e alteração de metadata;
-9. abre o LiveKit Meet sem imprimir o token no terminal.
+7. define `canPublishData=false`;
+8. nunca imprime o JWT nem o coloca na URL;
+9. copia o JWT temporariamente para o clipboard;
+10. inicia um servidor HTTP somente em `127.0.0.1` e abre o cliente local mic-only;
+11. fixa o cliente no endpoint LiveKit de produção e rejeita sala fora do formato esperado;
+12. nunca solicita câmera e limpa o campo de token após conectar.
 
-A validade do token limita a entrada inicial; a duração da conversa é controlada separadamente pelo agente. Não reutilize a mesma sala entre contatos.
+No navegador, clique em **Conectar**. Se a leitura automática do clipboard for bloqueada, cole o token apenas no campo de fallback exibido pela página. Após a conexão, o cliente tenta sobrescrever o clipboard automaticamente; se necessário, use:
+
+```powershell
+Set-Clipboard -Value '[cleared]'
+```
+
+Ao terminar, pare o servidor local usando o PID exibido pelo helper:
+
+```powershell
+Stop-Process -Id <PID>
+```
+
+Não use `meet.livekit.io` nem o antigo Agents Playground para esse fluxo privado.
 
 ## Deploy de produção
 
@@ -109,7 +128,7 @@ O helper de deploy:
 
 O repositório é público e o gate de CI pode consultar a API do GitHub sem autenticação. Se o repositório se tornar privado, forneça um `GITHUB_TOKEN` somente-leitura no ambiente local. O script nunca imprime esse token.
 
-Esse gate de deploy reduz o risco de um push direto na `main`, mas não substitui proteção de branch no GitHub. A `main` deve continuar sendo protegida por ruleset/branch protection com PR e `CI` obrigatórios.
+Esse gate de deploy reduz o risco de um push direto na `main`, mas não substitui proteção de branch no GitHub. A `main` deve ser protegida por ruleset/branch protection com PR e `CI` obrigatórios quando essa governança estiver disponível.
 
 ## Validação pós-deploy
 
@@ -122,8 +141,8 @@ lk agent secrets --id CA_GTdmGaEPnJy3 .
 Critérios mínimos:
 
 - status `Running` e réplica saudável;
-- identity autorizada recebe Estela + Groq;
-- identity não autorizada não envia nem recebe mídia da sessão do agente;
+- identity autorizada ouve a saudação da Stella e completa STT -> LLM -> TTS;
+- identity não autorizada é removida e não inicia sessão de IA;
 - segundo participante é removido de uma sala já vinculada;
 - logs de aplicação não contêm identity, room, token ou conteúdo da conversa;
 - `VELTS_BAD_ALLOW_CONSOLE` não existe nos secrets;
