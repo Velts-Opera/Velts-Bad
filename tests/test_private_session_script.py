@@ -74,9 +74,20 @@ def test_private_session_is_pinned_to_production_livekit_endpoint():
 
     assert "function Get-LiveKitUrl" in text
     assert f"$expected = '{EXPECTED_SERVER_URL}'" in text
-    assert "$fromEnv -and $fromEnv -ne $expected" in text
+    assert "$fromEnv -ne $expected" in text
     assert "LIVEKIT_URL does not match the Velts-Bad production LiveKit project" in text
     assert "return $expected" in text
+
+
+def test_private_session_normalizes_wrapping_quotes_before_endpoint_check():
+    text = script_text()
+
+    assert "$raw = ([string]$Values['LIVEKIT_URL']).Trim()" in text
+    assert "$raw.StartsWith('\\\"')" not in text
+    assert "$raw.StartsWith('\"')" in text
+    assert '$raw.StartsWith("\'")' in text
+    assert "$raw = $raw.Substring(1, $raw.Length - 2).Trim()" in text
+    assert "$fromEnv = $raw.TrimEnd('/')" in text
 
 
 def test_private_session_uses_local_client_not_removed_hosted_playground_or_meet():
