@@ -83,9 +83,8 @@ def test_private_session_normalizes_wrapping_quotes_before_endpoint_check():
     text = script_text()
 
     assert "$raw = ([string]$Values['LIVEKIT_URL']).Trim()" in text
-    assert "$raw.StartsWith('\\\"')" not in text
-    assert "$raw.StartsWith('\"')" in text
-    assert '$raw.StartsWith("\'")' in text
+    assert "$isDoubleQuoted" in text
+    assert "$isSingleQuoted" in text
     assert "$raw = $raw.Substring(1, $raw.Length - 2).Trim()" in text
     assert "$fromEnv = $raw.TrimEnd('/')" in text
 
